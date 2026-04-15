@@ -3,7 +3,7 @@
 
 An ex-google maps guy vibecoded himself a Palantir. https://www.youtube.com/watch?v=rXvU7bPJ8n4
 
-I took a look and he was charging a subscription for his palantir. I had claude vibecode up some liable garbage but which you can download yourself. I have run it and can confirm it will not rmdir your C:\. You will need API keys yourself to get it going, however. Mine are not in there. I am not responsible for anything in here and you should have claude run a check through it. You should download this and have claude take a look around and tell you what it's got yourself since it'll obviously not be up to your specifications or desires. This version is pretty simple.
+I took a look and he was charging a subscription for his palantir. I had claude vibecode up some liable garbage but which you can download yourself. I have run it and can confirm it will in fact not rmdir your C:\ drive. You will need API keys yourself to get it going, however. Mine are not in there. I am not responsible for anything in here and you should have claude run a check through it. You should download this and have claude take a look around and tell you what it's got yourself since it'll obviously not be up to your specifications or desires. This version is pretty simple.
 
 But yes if you can get yourself some live data links you too yourself can have a realtime view of your preferred battlespace.
 
