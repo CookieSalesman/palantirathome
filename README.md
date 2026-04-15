@@ -8,6 +8,7 @@ I took a look and he was charging a subscription for his palantir. I had claude 
 But yes if you can get yourself some live data links you too yourself can have a realtime view of your preferred battlespace.
 
 ////////////////////
+
 claude wrote the below and I have not read what it says nor will I read it.
 
 # PALANTIR VIBECODE
