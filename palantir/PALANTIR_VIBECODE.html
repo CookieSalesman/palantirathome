@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>PALANTIR VIBECODE // GLOBAL INTELLIGENCE SYSTEM</title>
+
+<!-- CesiumJS -->
+<script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+<link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet"/>
+
+<!-- satellite.js for TLE propagation -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.4/satellite.min.js"></script>
+
+<style>
+:root {
+  --green: #00ff88;
+  --dim:   #00aa55;
+  --bg:    #080c10;
+  --panel: rgba(4,14,10,0.88);
+  --border:#00ff8844;
+  --red:   #ff4444;
+  --amber: #ffaa00;
+  --blue:  #44aaff;
+  --text:  #c8ffd4;
+  --muted: #557766;
+  --font:  'Courier New','Lucida Console',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:var(--bg);color:var(--text);font-family:var(--font);font-size:12px;overflow:hidden}
+#cesiumContainer{position:fixed;top:0;left:0;width:100%;height:100%;z-index:0}
+.cesium-credit-logoContainer,.cesium-credit-expand-link,.cesium-viewer-bottom{display:none!important}
+#scanlines{position:fixed;inset:0;z-index:2;pointer-events:none;
+  background:repeating-linear-gradient(to bottom,transparent 0px,transparent 3px,rgba(0,0,0,.08) 3px,rgba(0,0,0,.08) 4px)}
+#vignette{position:fixed;inset:0;z-index:3;pointer-events:none;
+  background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.75) 100%)}
+#shader-overlay{position:fixed;inset:0;z-index:4;pointer-events:none;width:100%;height:100%;opacity:0;transition:opacity .4s}
+#shader-overlay.active{opacity:1}
+#hud-top{position:fixed;top:0;left:0;right:0;height:44px;z-index:10;
+  background:linear-gradient(180deg,rgba(0,12,6,.95) 0%,rgba(0,12,6,.6) 100%);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;
+  justify-content:space-between;padding:0 16px;gap:12px}
+#hud-title{font-size:13px;font-weight:bold;color:var(--green);letter-spacing:2px;
+  text-shadow:0 0 12px var(--green);white-space:nowrap}
+#hud-clock{display:flex;flex-direction:column;align-items:center;gap:1px}
+#utc-time{font-size:14px;color:var(--green);letter-spacing:1px;text-shadow:0 0 8px var(--green)}
+#local-date{font-size:10px;color:var(--dim)}
+#hud-coords{display:flex;gap:12px;font-size:11px;color:var(--dim)}
+#hud-coords span{letter-spacing:1px}
+.panel-header{font-size:10px;letter-spacing:3px;color:var(--green);border-bottom:1px solid var(--border);
+  padding:6px 8px;margin-bottom:6px;text-shadow:0 0 8px var(--green)}
+#panel-left{position:fixed;top:44px;left:0;width:220px;bottom:36px;z-index:10;
+  background:var(--panel);border-right:1px solid var(--border);overflow-y:auto;padding-bottom:8px}
+#panel-left::-webkit-scrollbar{width:4px}
+#panel-left::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+.layer-group{padding:6px 10px;border-bottom:1px solid rgba(0,255,136,.08)}
+.layer-label{font-size:9px;letter-spacing:3px;color:var(--muted);margin-bottom:5px}
+.toggle-row{display:flex;align-items:center;justify-content:space-between;padding:3px 0;
+  cursor:pointer;font-size:11px;color:var(--text);gap:8px}
+.toggle-row:hover{color:var(--green)}
+.toggle-row input[type="checkbox"]{display:none}
+.toggle-slider{position:relative;width:32px;height:16px;background:rgba(0,255,136,.1);
+  border:1px solid var(--border);border-radius:8px;flex-shrink:0;transition:background .2s}
+.toggle-slider::after{content:'';position:absolute;top:2px;left:2px;width:10px;height:10px;
+  background:var(--muted);border-radius:50%;transition:transform .2s,background .2s}
+input:checked+.toggle-slider{background:rgba(0,255,136,.25);border-color:var(--green)}
+input:checked+.toggle-slider::after{transform:translateX(16px);background:var(--green);box-shadow:0 0 6px var(--green)}
+.mode-buttons{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:4px}
+.mode-btn{background:rgba(0,255,136,.05);border:1px solid var(--border);color:var(--muted);
+  font-family:var(--font);font-size:10px;letter-spacing:1px;padding:5px;cursor:pointer;transition:all .15s}
+.mode-btn:hover{border-color:var(--green);color:var(--green)}
+.mode-btn.active{background:rgba(0,255,136,.2);border-color:var(--green);color:var(--green);text-shadow:0 0 6px var(--green)}
+.time-controls{display:flex;gap:4px;margin-top:4px}
+.time-btn{flex:1;background:rgba(0,255,136,.05);border:1px solid var(--border);color:var(--muted);
+  font-family:var(--font);font-size:10px;padding:4px;cursor:pointer;transition:all .15s}
+.time-btn:hover{border-color:var(--green);color:var(--green)}
+.time-btn.active{background:rgba(0,255,136,.2);border-color:var(--green);color:var(--green)}
+#time-rate-display{font-size:10px;color:var(--muted);margin-top:4px;text-align:center}
+#panel-right{position:fixed;top:44px;right:0;width:260px;bottom:36px;z-index:10;
+  background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+#intel-feed{flex:1;overflow-y:auto;padding:6px 8px;font-size:10px;line-height:1.6}
+#intel-feed::-webkit-scrollbar{width:4px}
+#intel-feed::-webkit-scrollbar-thumb{background:var(--border)}
+.intel-entry{padding:3px 0;border-bottom:1px solid rgba(0,255,136,.05);color:var(--dim)}
+.intel-entry.init{color:var(--amber)}
+.intel-entry.flight{color:var(--blue)}
+.intel-entry.satellite{color:var(--green)}
+.intel-entry.alert{color:var(--red)}
+.intel-entry .ts{font-size:9px;color:var(--muted);margin-right:6px}
+#object-detail{border-top:1px solid var(--border);padding:6px 8px;font-size:10px}
+#object-detail.hidden{display:none}
+#object-info{margin-top:4px;line-height:1.8}
+#object-info .field{display:flex;justify-content:space-between}
+#object-info .field-label{color:var(--muted)}
+#object-info .field-value{color:var(--green)}
+#stats-panel{border-top:1px solid var(--border);padding:6px 8px}
+.stat-row{display:flex;justify-content:space-between;padding:2px 0;font-size:10px}
+.stat-label{color:var(--muted);letter-spacing:1px}
+#stats-panel span:last-child{color:var(--green);font-weight:bold}
+#hud-bottom{position:fixed;bottom:0;left:0;right:0;height:36px;z-index:10;
+  background:linear-gradient(0deg,rgba(0,12,6,.95) 0%,rgba(0,12,6,.6) 100%);
+  border-top:1px solid var(--border);display:flex;align-items:center;
+  justify-content:space-between;padding:0 16px;font-size:10px;letter-spacing:1px}
+#status-msg{color:var(--amber)}
+#fps-counter{color:var(--muted)}
+.blink{animation:blink 1s step-end infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.modal{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.85);backdrop-filter:blur(4px)}
+.modal.hidden{display:none}
+.modal-box{background:rgba(4,14,10,.98);border:1px solid var(--green);
+  box-shadow:0 0 40px rgba(0,255,136,.2),inset 0 0 40px rgba(0,255,136,.02);
+  padding:28px 32px;width:480px;max-width:95vw}
+.modal-title{font-size:16px;letter-spacing:4px;color:var(--green);text-shadow:0 0 12px var(--green);
+  margin-bottom:10px;text-align:center}
+.modal-desc{font-size:11px;color:var(--muted);text-align:center;margin-bottom:20px}
+.api-field{margin-bottom:14px}
+.api-field label{display:block;font-size:10px;letter-spacing:2px;color:var(--muted);margin-bottom:4px}
+.api-field input{width:100%;background:rgba(0,255,136,.04);border:1px solid var(--border);
+  color:var(--text);font-family:var(--font);font-size:12px;padding:7px 10px;outline:none;transition:border-color .2s}
+.api-field input:focus{border-color:var(--green);box-shadow:0 0 8px rgba(0,255,136,.15)}
+.modal-buttons{display:flex;gap:12px;margin-top:20px}
+.modal-buttons button{flex:1;background:rgba(0,255,136,.08);border:1px solid var(--green);
+  color:var(--green);font-family:var(--font);font-size:11px;letter-spacing:2px;padding:10px;cursor:pointer;transition:all .15s}
+.modal-buttons button:hover{background:rgba(0,255,136,.2);box-shadow:0 0 12px rgba(0,255,136,.3)}
+#btn-demo-mode{border-color:var(--amber);color:var(--amber)}
+#btn-demo-mode:hover{background:rgba(255,170,0,.1);box-shadow:0 0 12px rgba(255,170,0,.2)}
+</style>
+</head>
+<body>
+
+<div id="scanlines"></div>
+<div id="vignette"></div>
+<div id="cesiumContainer"></div>
+<canvas id="shader-overlay"></canvas>
+
+<!-- HUD TOP -->
+<div id="hud-top">
+  <div id="hud-title"><span class="blink">▮</span> PALANTIR VIBECODE // GLOBAL INTELLIGENCE SYSTEM <span class="blink">▮</span></div>
+  <div id="hud-clock">
+    <span id="utc-time">UTC --:--:--</span>
+    <span id="local-date"></span>
+  </div>
+  <div id="hud-coords">
+    <span id="coord-lat">LAT --</span>
+    <span id="coord-lon">LON --</span>
+    <span id="coord-alt">ALT --km</span>
+  </div>
+</div>
+
+<!-- LEFT PANEL -->
+<div id="panel-left">
+  <div class="panel-header">LAYER CONTROL</div>
+  <div class="layer-group">
+    <div class="layer-label">TERRAIN</div>
+    <label class="toggle-row"><span>3D Photorealistic Tiles</span>
+      <input type="checkbox" id="toggle-3dtiles" checked/><span class="toggle-slider"></span></label>
+    <label class="toggle-row"><span>Atmosphere</span>
+      <input type="checkbox" id="toggle-atmosphere" checked/><span class="toggle-slider"></span></label>
+  </div>
+  <div class="layer-group">
+    <div class="layer-label">TRACK: AIR</div>
+    <label class="toggle-row"><span>Commercial Flights</span>
+      <input type="checkbox" id="toggle-flights"/><span class="toggle-slider"></span></label>
+    <label class="toggle-row"><span>ADS-B Unfiltered</span>
+      <input type="checkbox" id="toggle-adsb"/><span class="toggle-slider"></span></label>
+  </div>
+  <div class="layer-group">
+    <div class="layer-label">TRACK: ORBITAL</div>
+    <label class="toggle-row"><span>GPS Constellation</span>
+      <input type="checkbox" id="toggle-gps"/><span class="toggle-slider"></span></label>
+    <label class="toggle-row"><span>LEO Satellites</span>
+      <input type="checkbox" id="toggle-leo"/><span class="toggle-slider"></span></label>
+    <label class="toggle-row"><span>Orbital Paths</span>
+      <input type="checkbox" id="toggle-orbits"/><span class="toggle-slider"></span></label>
+  </div>
+  <div class="layer-group">
+    <div class="layer-label">TRACK: GROUND</div>
+    <label class="toggle-row"><span>Road Particles (Austin)</span>
+      <input type="checkbox" id="toggle-roads"/><span class="toggle-slider"></span></label>
+  </div>
+  <div class="layer-group">
+    <div class="layer-label">VIEW MODE</div>
+    <div class="mode-buttons">
+      <button class="mode-btn active" data-mode="normal">NORMAL</button>
+      <button class="mode-btn" data-mode="nvg">NVG</button>
+      <button class="mode-btn" data-mode="flir">FLIR</button>
+      <button class="mode-btn" data-mode="radar">RADAR</button>
+    </div>
+  </div>
+  <div class="layer-group">
+    <div class="layer-label">TIME CONTROL</div>
+    <div class="time-controls">
+      <button class="time-btn active" id="btn-realtime">LIVE</button>
+      <button class="time-btn" id="btn-faster">▶▶</button>
+      <button class="time-btn" id="btn-slower">◀◀</button>
+    </div>
+    <div id="time-rate-display">Rate: 1x (LIVE)</div>
+  </div>
+  <div class="layer-group">
+    <div class="layer-label">SYSTEM</div>
+    <button class="time-btn" id="btn-config" style="width:100%;margin-top:4px">CONFIGURE KEYS</button>
+  </div>
+</div>
+
+<!-- RIGHT PANEL -->
+<div id="panel-right">
+  <div class="panel-header">INTEL FEED</div>
+  <div id="intel-feed">
+    <div class="intel-entry init">SYSTEM INITIALIZING...</div>
+  </div>
+  <div id="object-detail" class="hidden">
+    <div class="panel-header">OBJECT DETAIL</div>
+    <div id="object-info"></div>
+  </div>
+  <div id="stats-panel">
+    <div class="stat-row"><span class="stat-label">AIRCRAFT</span><span id="stat-flights">0</span></div>
+    <div class="stat-row"><span class="stat-label">SATELLITES</span><span id="stat-sats">0</span></div>
+    <div class="stat-row"><span class="stat-label">ROAD PARTS</span><span id="stat-ground">0</span></div>
+  </div>
+</div>
+
+<!-- BOTTOM BAR -->
+<div id="hud-bottom">
+  <span id="status-msg">AWAITING INITIALIZATION</span>
+  <span id="fps-counter">FPS: --</span>
+</div>
+
+<!-- CONFIG MODAL -->
+<div id="config-modal" class="modal">
+  <div class="modal-box">
+    <div class="modal-title">// API CONFIGURATION //</div>
+    <p class="modal-desc">Enter your API keys for live data. All keys stored locally in your browser only.</p>
+    <div class="api-field">
+      <label>Google Maps API Key (enables Photorealistic 3D Tiles)</label>
+      <input type="password" id="key-google" placeholder="AIza..." autocomplete="off"/>
+    </div>
+    <div class="api-field">
+      <label>ADS-B Exchange RapidAPI Key (unfiltered military traffic)</label>
+      <input type="password" id="key-adsb" placeholder="RapidAPI key..." autocomplete="off"/>
+    </div>
+    <div class="api-field">
+      <label>OpenSky Username (optional, raises rate limits)</label>
+      <input type="text" id="key-opensky-user" placeholder="username" autocomplete="off"/>
+    </div>
+    <div class="api-field">
+      <label>OpenSky Password</label>
+      <input type="password" id="key-opensky-pass" placeholder="password" autocomplete="off"/>
+    </div>
+    <div class="modal-buttons">
+      <button id="btn-save-keys">SAVE &amp; INITIALIZE</button>
+      <button id="btn-demo-mode">DEMO MODE (No Keys)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ════════════════════════════════════════════════════════════
+// GLOBAL TIME — shared clock with rate multiplier
+// ════════════════════════════════════════════════════════════
+const SimTime = (() => {
+  let rate     = 1;
+  let realBase = Date.now();
+  let simBase  = Date.now();
+
+  return {
+    now() {
+      const elapsed = Date.now() - realBase;
+      return new Date(simBase + elapsed * rate);
+    },
+    setRate(r) {
+      // Anchor sim time at current moment before changing rate
+      simBase  = this.now().getTime();
+      realBase = Date.now();
+      rate = r;
+      document.getElementById('time-rate-display').textContent =
+        rate === 1 ? 'Rate: 1x (LIVE)' : `Rate: ${rate}x`;
+    },
+    getRate() { return rate; },
+    reset() {
+      rate = 1; realBase = Date.now(); simBase = Date.now();
+      document.getElementById('time-rate-display').textContent = 'Rate: 1x (LIVE)';
+    },
+  };
+})();
+
+// ════════════════════════════════════════════════════════════
+// CONFIG — localStorage key store
+// ════════════════════════════════════════════════════════════
+const Config = {
+  get googleMapsKey()  { return localStorage.getItem('pv_google') || '' },
+  get adsbKey()        { return localStorage.getItem('pv_adsb')   || '' },
+  get openskyUser()    { return localStorage.getItem('pv_osk_u')  || '' },
+  get openskyPass()    { return localStorage.getItem('pv_osk_p')  || '' },
+  save(o) {
+    if (o.google !== undefined) localStorage.setItem('pv_google', o.google);
+    if (o.adsb !== undefined)   localStorage.setItem('pv_adsb',   o.adsb);
+    if (o.openskyUser !== undefined) localStorage.setItem('pv_osk_u', o.openskyUser);
+    if (o.openskyPass !== undefined) localStorage.setItem('pv_osk_p', o.openskyPass);
+  },
+  hasGoogle()  { return !!this.googleMapsKey },
+  hasAdsb()    { return !!this.adsbKey },
+  hasOpensky() { return !!this.openskyUser && !!this.openskyPass },
+  hasAny()     { return this.hasGoogle() || this.hasAdsb() || this.hasOpensky() },
+};
+
+// ════════════════════════════════════════════════════════════
+// INTEL FEED
+// ════════════════════════════════════════════════════════════
+const Intel = (() => {
+  const MAX = 120;
+  function ts() { return new Date().toUTCString().slice(17,25); }
+  function append(msg, type) {
+    const feed = document.getElementById('intel-feed');
+    if (!feed) return;
+    const el = document.createElement('div');
+    el.className = `intel-entry ${type}`;
+    el.innerHTML = `<span class="ts">[${ts()}]</span>${msg}`;
+    feed.prepend(el);
+    while (feed.children.length > MAX) feed.removeChild(feed.lastChild);
+  }
+  return {
+    log:       m => append(m, 'info'),
+    init:      m => append(m, 'init'),
+    flight:    m => append(m, 'flight'),
+    satellite: m => append(m, 'satellite'),
+    alert:     m => append(m, 'alert'),
+  };
+})();
+
+// ════════════════════════════════════════════════════════════
+// GLOBE — CesiumJS + Google Photorealistic 3D Tiles
+// ════════════════════════════════════════════════════════════
+let viewer = null;
+let google3dTileset = null;
+
+async function initGlobe() {
+  // Add your Cesium Ion token at https://ion.cesium.com/tokens
+  Cesium.Ion.defaultAccessToken = Config.cesiumToken || '';
+
+  viewer = new Cesium.Viewer('cesiumContainer', {
+    timeline: false, animation: false, baseLayerPicker: false,
+    geocoder: false, homeButton: false, sceneModePicker: false,
+    navigationHelpButton: false, infoBox: false, selectionIndicator: false,
+    fullscreenButton: false,
+    creditContainer: document.createElement('div'),
+  });
+
+  viewer.scene.globe.enableLighting = true;
+  viewer.scene.highDynamicRange     = true;
+  viewer.scene.msaaSamples          = 4;
+  viewer.scene.backgroundColor      = Cesium.Color.BLACK;
+
+  // FIX: Start over Austin TX at ~400km — close enough to see terrain, far enough to see aircraft
+  viewer.camera.setView({
+    destination: Cesium.Cartesian3.fromDegrees(-97.74, 30.27, 400_000),
+    orientation: { heading: 0, pitch: Cesium.Math.toRadians(-60), roll: 0 },
+  });
+
+  // Attempt Cesium World Terrain (always loaded as base)
+  try {
+    viewer.terrainProvider = await Cesium.createWorldTerrainAsync({ requestWaterMask: true });
+    Intel.init('Cesium World Terrain loaded');
+  } catch(e) { Intel.alert('Terrain fallback: basic ellipsoid'); }
+
+  // FIX: Google 3D Tiles are additive — do NOT hide the globe
+  if (Config.hasGoogle()) await loadGoogle3DTiles();
+
+  // Cursor coords — update on every frame for smooth altitude tracking
+  viewer.scene.postRender.addEventListener(() => {
+    const alt = (viewer.camera.positionCartographic.height / 1000).toFixed(1);
+    document.getElementById('coord-alt').textContent = `ALT ${alt}km`;
+  });
+
+  const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+  handler.setInputAction(e => {
+    const cart = viewer.camera.pickEllipsoid(e.endPosition);
+    if (!cart) return;
+    const c   = Cesium.Cartographic.fromCartesian(cart);
+    if (!c) return;
+    const lat = Cesium.Math.toDegrees(c.latitude).toFixed(4);
+    const lon = Cesium.Math.toDegrees(c.longitude).toFixed(4);
+    document.getElementById('coord-lat').textContent = `LAT ${lat}`;
+    document.getElementById('coord-lon').textContent = `LON ${lon}`;
+  }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+  handler.setInputAction(e => {
+    const picked = viewer.scene.pick(e.position);
+    if (picked && picked.id && picked.id.properties) showObjectDetail(picked.id);
+    else document.getElementById('object-detail').classList.add('hidden');
+  }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+  Intel.init('Globe ready — scroll to zoom, drag to rotate');
+}
+
+async function loadGoogle3DTiles() {
+  try {
+    const tileset = await Cesium.Cesium3DTileset.fromUrl(
+      `https://tile.googleapis.com/v1/3dtiles/root.json?key=${Config.googleMapsKey}`
+    );
+    google3dTileset = viewer.scene.primitives.add(tileset);
+    // FIX: Keep the globe visible! 3D tiles only have detail when zoomed in.
+    // The globe provides Earth imagery at high altitudes.
+    // At street level, 3D tiles will naturally occlude the globe.
+    viewer.scene.globe.show = true;
+    Intel.init('Google Photorealistic 3D Tiles active');
+    Intel.init('Zoom in to a city to see photorealistic buildings');
+    setStatus('3D TILES ACTIVE — zoom into a city for detail');
+  } catch(e) {
+    Intel.alert(`3D Tiles error: ${e.message}`);
+    Intel.alert('Check: Google Cloud Console > APIs > "Map Tiles API" must be enabled');
+    setStatus('3D TILES FAILED — see intel feed');
+  }
+}
+
+function setAtmosphere(on) {
+  if (!viewer) return;
+  viewer.scene.fog.enabled        = on;
+  viewer.scene.skyAtmosphere.show = on;
+}
+
+function showObjectDetail(entity) {
+  const panel = document.getElementById('object-detail');
+  const info  = document.getElementById('object-info');
+  const props = entity.properties;
+  if (!props) return;
+  panel.classList.remove('hidden');
+  info.innerHTML = props.propertyNames.map(n =>
+    `<div class="field"><span class="field-label">${n}</span>
+     <span class="field-value">${props[n]?.getValue() ?? '--'}</span></div>`
+  ).join('');
+}
+
+// ════════════════════════════════════════════════════════════
+// FLIGHTS — OpenSky Network + ADS-B Exchange
+// ════════════════════════════════════════════════════════════
+const Flights = (() => {
+  let entities = new Map();
+  let interval = null;
+  let active   = false;
+  let adsbMode = false;
+
+  const PLANE_IMG = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 32;
+    const x = c.getContext('2d');
+    x.fillStyle = '#44aaff'; x.strokeStyle = '#88ccff'; x.lineWidth = 1;
+    x.beginPath();
+    x.moveTo(16,4); x.lineTo(19,14); x.lineTo(28,18); x.lineTo(19,18);
+    x.lineTo(17,28); x.lineTo(16,25); x.lineTo(15,28); x.lineTo(13,18);
+    x.lineTo(4,18); x.lineTo(13,14); x.closePath();
+    x.fill(); x.stroke();
+    return c.toDataURL();
+  })();
+
+  const MIL_PLANE_IMG = (() => {
+    const c = document.createElement('canvas');
+    c.width = c.height = 32;
+    const x = c.getContext('2d');
+    x.fillStyle = '#ff4444'; x.strokeStyle = '#ff8888'; x.lineWidth = 1;
+    x.beginPath();
+    x.moveTo(16,4); x.lineTo(19,14); x.lineTo(28,18); x.lineTo(19,18);
+    x.lineTo(17,28); x.lineTo(16,25); x.lineTo(15,28); x.lineTo(13,18);
+    x.lineTo(4,18); x.lineTo(13,14); x.closePath();
+    x.fill(); x.stroke();
+    return c.toDataURL();
+  })();
+
+  async function fetchOpenSky() {
+    const headers = {};
+    if (Config.hasOpensky())
+      headers['Authorization'] = 'Basic ' + btoa(`${Config.openskyUser}:${Config.openskyPass}`);
+    const res = await fetch('https://opensky-network.org/api/states/all', { headers });
+    if (!res.ok) throw new Error(`OpenSky ${res.status}`);
+    const json = await res.json();
+    return (json.states || []).map(s => ({
+      icao24:   s[0], callsign: (s[1]||'').trim()||s[0].toUpperCase(),
+      lon:s[5], lat:s[6], altBaro:s[7], onGround:s[8],
+      velocity:s[9], heading:s[10],
+      military: false,
+    }));
+  }
+
+  async function fetchAdsb() {
+    const res = await fetch(
+      'https://adsbexchange-com1.p.rapidapi.com/v2/lat/0/lon/0/dist/250/',
+      { headers: {
+          'X-RapidAPI-Key':  Config.adsbKey,
+          'X-RapidAPI-Host': 'adsbexchange-com1.p.rapidapi.com',
+      }}
+    );
+    if (!res.ok) throw new Error(`ADS-B ${res.status}`);
+    const json = await res.json();
+    return (json.ac||[]).map(a => ({
+      icao24:   a.hex,
+      callsign: (a.flight||'').trim()||a.hex.toUpperCase(),
+      lon:      parseFloat(a.lon), lat:parseFloat(a.lat),
+      altBaro:  a.alt_baro==='ground' ? 0 : parseFloat(a.alt_baro)*0.3048,
+      onGround: a.alt_baro==='ground',
+      velocity: parseFloat(a.gs)*0.514444,
+      heading:  parseFloat(a.track),
+      military: !!a.mil,
+    }));
+  }
+
+  async function poll() {
+    try {
+      const states = adsbMode ? await fetchAdsb() : await fetchOpenSky();
+      const seen   = new Set();
+      for (const ac of states) {
+        if (ac.lat == null || ac.lon == null || isNaN(ac.lat) || isNaN(ac.lon) || ac.onGround) continue;
+        seen.add(ac.icao24);
+        const alt = ac.altBaro || 0;
+        const pos = Cesium.Cartesian3.fromDegrees(ac.lon, ac.lat, alt);
+        const isMil = ac.military;
+        const col = isMil
+          ? Cesium.Color.fromCssColorString('#ff4444')
+          : Cesium.Color.fromCssColorString('#44aaff');
+        const heading = (ac.heading != null && !isNaN(ac.heading)) ? ac.heading : 0;
+
+        if (entities.has(ac.icao24)) {
+          const e = entities.get(ac.icao24);
+          e.position = pos;
+          e.billboard.rotation = Cesium.Math.toRadians(-heading);
+        } else {
+          const e = viewer.entities.add({
+            id: `flight_${ac.icao24}`, position: pos,
+            billboard: {
+              image: isMil ? MIL_PLANE_IMG : PLANE_IMG,
+              scale: 0.6,
+              rotation: Cesium.Math.toRadians(-heading),
+              alignedAxis: Cesium.Cartesian3.UNIT_Z, sizeInMeters: false,
+            },
+            label: {
+              text: ac.callsign, font: '9px Courier New',
+              fillColor: col, outlineColor: Cesium.Color.BLACK, outlineWidth: 2,
+              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+              pixelOffset: new Cesium.Cartesian2(0,-16),
+              distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0,2_000_000),
+            },
+            properties: {
+              CALLSIGN: ac.callsign, ICAO24: ac.icao24.toUpperCase(),
+              ALT_FT:   Math.round(alt*3.28084),
+              SPEED_KTS:ac.velocity ? Math.round(ac.velocity*1.944) : '--',
+              HEADING:  heading ? `${Math.round(heading)}deg` : '--',
+              TYPE:     isMil?'MILITARY':'CIVIL',
+            },
+          });
+          entities.set(ac.icao24, e);
+          if (isMil) Intel.alert(`MIL TRACK: ${ac.callsign} @FL${Math.round(alt*3.28084/100)}`);
+        }
+      }
+      for (const [id, e] of entities) {
+        if (!seen.has(id)) { viewer.entities.remove(e); entities.delete(id); }
+      }
+      document.getElementById('stat-flights').textContent = entities.size;
+      if (entities.size > 0) Intel.flight(`Tracking ${entities.size} aircraft`);
+    } catch(e) { Intel.alert(`Flight poll error: ${e.message}`); }
+  }
+
+  return {
+    start(adsb=false) {
+      if (active) { this.stop(); }
+      active=true; adsbMode=adsb;
+      Intel.flight(`Flights ON (${adsb?'ADS-B Exchange':'OpenSky'})`);
+      poll();
+      interval = setInterval(poll, adsb?8000:15000);
+    },
+    stop() {
+      if (!active) return;
+      active=false; clearInterval(interval);
+      entities.forEach(e=>viewer.entities.remove(e));
+      entities.clear();
+      document.getElementById('stat-flights').textContent='0';
+      Intel.flight('Flights OFF');
+    },
+  };
+})();
+
+// ════════════════════════════════════════════════════════════
+// SATELLITES — CelesTrak TLE + satellite.js
+// ════════════════════════════════════════════════════════════
+const Satellites = (() => {
+  let satEntities = new Map();
+  let orbitPaths  = new Map();
+  let satRecords  = new Map();
+  let rafId       = null;
+  let showOrbits  = false;
+
+  function parseTle(text) {
+    const lines = text.split('\n').map(l=>l.trim()).filter(Boolean);
+    const result = [];
+    for (let i=0; i<lines.length-2; i+=3) {
+      if (lines[i+1]?.startsWith('1 ') && lines[i+2]?.startsWith('2 '))
+        result.push({name:lines[i], line1:lines[i+1], line2:lines[i+2]});
+    }
+    return result;
+  }
+
+  // FIX: Multiple CORS proxy fallbacks
+  async function fetchTle(url) {
+    // Try direct first
+    try {
+      const r = await fetch(url);
+      if (r.ok) return await r.text();
+    } catch(e) {}
+    // Proxy 1: allorigins
+    try {
+      const r = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`);
+      if (r.ok) return await r.text();
+    } catch(e) {}
+    // Proxy 2: corsproxy.io
+    try {
+      const r = await fetch(`https://corsproxy.io/?${encodeURIComponent(url)}`);
+      if (r.ok) return await r.text();
+    } catch(e) {}
+    throw new Error('All TLE fetch methods failed (CORS)');
+  }
+
+  function tick() {
+    // FIX: Use SimTime for time-accelerated satellite propagation
+    const now  = SimTime.now();
+    const gmst = satellite.gstime(now);
+    let n = 0;
+
+    for (const [satnum, {satrec, name}] of satRecords) {
+      const pv = satellite.propagate(satrec, now);
+      if (!pv.position) continue;
+      const geo = satellite.eciToGeodetic(pv.position, gmst);
+      const lat = satellite.radiansToDegrees(geo.latitude);
+      const lon = satellite.radiansToDegrees(geo.longitude);
+      const alt = geo.height * 1000;
+      if (isNaN(lat)||isNaN(lon)||isNaN(alt)) continue;
+      n++;
+
+      const pos   = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
+      const altKm = alt/1000;
+      const col   = altKm < 2000
+        ? Cesium.Color.fromCssColorString('#00ff88')
+        : Cesium.Color.fromCssColorString('#ffaa00');
+
+      if (satEntities.has(satnum)) {
+        satEntities.get(satnum).position = pos;
+      } else {
+        const e = viewer.entities.add({
+          id: `sat_${satnum}`, position: pos,
+          point: { pixelSize:altKm<2000?5:3, color:col, outlineColor:Cesium.Color.BLACK, outlineWidth:1 },
+          label: {
+            text: name, font: '9px Courier New',
+            fillColor: col, outlineColor: Cesium.Color.BLACK, outlineWidth:2,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            pixelOffset: new Cesium.Cartesian2(8,0),
+            distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0,12_000_000),
+          },
+          properties: {
+            NAME: name, SATNUM: satnum,
+            ALT_KM: altKm.toFixed(1), LAT: lat.toFixed(2), LON: lon.toFixed(2),
+            REGIME: altKm<2000?'LEO':altKm<35000?'MEO':'GEO',
+          },
+        });
+        satEntities.set(satnum, e);
+      }
+      if (showOrbits) drawOrbit(satnum, satrec, now);
+    }
+    document.getElementById('stat-sats').textContent = n;
+    rafId = requestAnimationFrame(tick);
+  }
+
+  function drawOrbit(satnum, satrec, now) {
+    if (orbitPaths.has(satnum)) return; // Only draw once per sat, not every frame
+    const period = (2*Math.PI/satrec.no)*60*1000;
+    const pts = [];
+    const steps = Math.min(240, Math.max(60, Math.round(period/60000)*2)); // More steps for higher orbits
+    for (let i=0; i<=steps; i++) {
+      const t    = new Date(now.getTime()+(i/steps)*period);
+      const gmst = satellite.gstime(t);
+      const pv   = satellite.propagate(satrec, t);
+      if (!pv.position) continue;
+      const geo  = satellite.eciToGeodetic(pv.position, gmst);
+      const lat  = satellite.radiansToDegrees(geo.latitude);
+      const lon  = satellite.radiansToDegrees(geo.longitude);
+      const alt  = geo.height*1000;
+      if (!isNaN(lat)&&!isNaN(lon)&&!isNaN(alt))
+        pts.push(Cesium.Cartesian3.fromDegrees(lon, lat, alt));
+    }
+    if (pts.length < 2) return;
+    const e = viewer.entities.add({
+      polyline: {
+        positions: pts, width: 1,
+        material: new Cesium.PolylineDashMaterialProperty({
+          color: Cesium.Color.fromCssColorString('#00ff8844'), dashLength: 16,
+        }),
+      }
+    });
+    orbitPaths.set(satnum, e);
+  }
+
+  // FIX: More recent TLE epoch dates (2026) for accurate demo propagation
+  const DEMO_TLES = [
+    ['ISS (ZARYA)',
+     '1 25544U 98067A   26070.50000000  .00006143  00000+0  11511-3 0  9992',
+     '2 25544  51.6406 108.3971 0001828  87.4088 272.7220 15.49804757432991'],
+    ['STARLINK-1007',
+     '1 44713U 19074A   26070.50000000  .00001469  00000+0  11374-3 0  9998',
+     '2 44713  53.0534 216.4312 0001330  94.3157 265.7950 15.06390060232141'],
+    ['GPS BIIR-2 (PRN 13)',
+     '1 24876U 97035A   26070.50000000 -.00000023  00000+0  00000+0 0  9998',
+     '2 24876  55.4849 179.4028 0044983  40.3154 320.0980  2.00558977192742'],
+    ['NOAA 19',
+     '1 33591U 09005A   26070.50000000  .00000082  00000+0  71072-4 0  9992',
+     '2 33591  99.1909 344.0572 0014059 208.0289 151.9913 14.12393067769614'],
+    ['TERRA',
+     '1 25994U 99068A   26070.50000000  .00000038  00000+0  23697-4 0  9995',
+     '2 25994  98.2044 244.5571 0001259  82.5613 277.5712 14.57126681278476'],
+    ['AQUA',
+     '1 27424U 02022A   26070.50000000  .00000090  00000+0  49540-4 0  9997',
+     '2 27424  98.2072 272.2455 0002129  63.8640 296.2725 14.57120988142831'],
+    ['SENTINEL-2A',
+     '1 40697U 15028A   26070.50000000  .00000067  00000+0  37044-4 0  9996',
+     '2 40697  98.5691 312.9388 0001094  99.2744 260.8583 14.30817757456019'],
+    ['LANDSAT 8',
+     '1 39084U 13008A   26070.50000000  .00000056  00000+0  32127-4 0  9993',
+     '2 39084  98.2193 317.0049 0001310  90.3268 269.8072 14.57108059584411'],
+    ['WORLDVIEW-3',
+     '1 40115U 14048A   26070.50000000  .00000120  00000+0  63821-4 0  9991',
+     '2 40115  97.9234 355.8117 0001229  78.0745 282.0590 14.84068215510732'],
+    ['GOES-16',
+     '1 41866U 16071A   26070.50000000 -.00000270  00000+0  00000+0 0  9991',
+     '2 41866   0.0519 163.4064 0000941 189.9399 266.4869  1.00271874026469'],
+  ];
+
+  return {
+    loadDemo() {
+      for (const [name, l1, l2] of DEMO_TLES) {
+        try {
+          const satrec = satellite.twoline2satrec(l1, l2);
+          satRecords.set(satrec.satnum, {satrec, name});
+        } catch(e) {}
+      }
+      if (!rafId) tick();
+      Intel.satellite(`Demo: ${DEMO_TLES.length} satellites loaded`);
+    },
+    async load(group) {
+      const URLS = {
+        gps: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=gps-ops&FORMAT=tle',
+        leo: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations&FORMAT=tle',
+      };
+      const url = URLS[group] || URLS.gps;
+      Intel.satellite(`Fetching TLE: ${group.toUpperCase()}...`);
+      try {
+        const text = await fetchTle(url);
+        const tles = parseTle(text);
+        if (tles.length === 0) throw new Error('No valid TLEs parsed');
+        // FIX: Clear previous constellation entities before loading new ones
+        satEntities.forEach(e => viewer.entities.remove(e));
+        orbitPaths.forEach(e => viewer.entities.remove(e));
+        satEntities.clear();
+        orbitPaths.clear();
+        satRecords.clear();
+        for (const {name,line1,line2} of tles) {
+          try {
+            const satrec = satellite.twoline2satrec(line1, line2);
+            satRecords.set(satrec.satnum, {satrec, name:name.trim()});
+          } catch(e) {}
+        }
+        if (!rafId) tick();
+        Intel.satellite(`${tles.length} ${group.toUpperCase()} TLEs loaded`);
+      } catch(e) {
+        Intel.alert(`TLE failed: ${e.message}`);
+        Intel.alert('Loading demo satellites instead');
+        this.loadDemo();
+      }
+    },
+    stop() {
+      if (rafId) cancelAnimationFrame(rafId);
+      rafId = null;
+      satEntities.forEach(e=>viewer.entities.remove(e));
+      orbitPaths.forEach(e=>viewer.entities.remove(e));
+      satEntities.clear(); orbitPaths.clear(); satRecords.clear();
+      document.getElementById('stat-sats').textContent='0';
+      Intel.satellite('Satellites OFF');
+    },
+    toggleOrbits(on) {
+      showOrbits = on;
+      if (!on) { orbitPaths.forEach(e=>viewer.entities.remove(e)); orbitPaths.clear(); }
+    },
+  };
+})();
+
+// ════════════════════════════════════════════════════════════
+// ROADS — OSM particle system (Canvas2D overlay)
+// ════════════════════════════════════════════════════════════
+const Roads = (() => {
+  let canvas=null, ctx=null, rafId=null, active=false;
+  let particles=[], segments=[];
+  const MAX_P = 800;
+  const OVERPASS = 'https://overpass-api.de/api/interpreter';
+  const BBOX = { s:30.1, w:-97.9, n:30.5, e:-97.5 }; // Austin TX
+
+  function buildDemoGrid() {
+    const s=[];
+    for (let lat=30.15; lat<30.45; lat+=0.04)
+      for (let lon=-97.85; lon<-97.55; lon+=0.01)
+        s.push([{lat,lon},{lat,lon:lon+0.01}]);
+    for (let lon=-97.85; lon<-97.55; lon+=0.04)
+      for (let lat=30.15; lat<30.45; lat+=0.01)
+        s.push([{lat,lon},{lat:lat+0.01,lon}]);
+    return s;
+  }
+
+  async function fetchOsm() {
+    const q = `[out:json][timeout:25];(way["highway"~"motorway|trunk|primary|secondary"](${BBOX.s},${BBOX.w},${BBOX.n},${BBOX.e}););out body;>;out skel qt;`;
+    const r = await fetch(OVERPASS, {
+      method:'POST', body:`data=${encodeURIComponent(q)}`,
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+    });
+    if (!r.ok) throw new Error(`Overpass ${r.status}`);
+    const j = await r.json();
+    const nds = {};
+    for (const el of j.elements) if (el.type==='node') nds[el.id]={lat:el.lat,lon:el.lon};
+    const s = [];
+    for (const el of j.elements) {
+      if (el.type!=='way') continue;
+      const pts = (el.nodes||[]).map(id=>nds[id]).filter(Boolean);
+      for (let i=0; i<pts.length-1; i++) s.push([pts[i],pts[i+1]]);
+    }
+    return s;
+  }
+
+  function spawnParticles() { for (let i=0; i<MAX_P; i++) spawnOne(); }
+  function spawnOne() {
+    const seg = segments[Math.floor(Math.random()*segments.length)];
+    particles.push({
+      seg, t: Math.random(),
+      speed: 0.0008+Math.random()*0.003,
+      color: Math.random()<0.08?'#ff4444':'#44aaff',
+      alpha: 0.4+Math.random()*0.5,
+      size:  1+Math.random()*1.5,
+    });
+  }
+
+  // FIX: Use devicePixelRatio for correct HiDPI rendering
+  function latLonToScreen(lat, lon) {
+    try {
+      const c = Cesium.Cartesian3.fromDegrees(lon, lat, 50);
+      const s = Cesium.SceneTransforms.wgs84ToWindowCoordinates(viewer.scene, c);
+      if (!s) return null;
+      const dpr = window.devicePixelRatio || 1;
+      return { x: s.x * dpr, y: s.y * dpr };
+    } catch { return null; }
+  }
+
+  function loop() {
+    if (!active) return;
+    rafId = requestAnimationFrame(loop);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let drawn = 0;
+    for (const p of particles) {
+      p.t += p.speed;
+      if (p.t > 1) {
+        p.seg = segments[Math.floor(Math.random()*segments.length)];
+        p.t = 0;
+        p.speed = 0.0008+Math.random()*0.003;
+        continue;
+      }
+      const a = p.seg[0], b = p.seg[1];
+      const lat = a.lat+(b.lat-a.lat)*p.t;
+      const lon = a.lon+(b.lon-a.lon)*p.t;
+      const sc = latLonToScreen(lat, lon);
+      if (!sc) continue;
+      ctx.beginPath();
+      ctx.arc(sc.x, sc.y, p.size * (window.devicePixelRatio || 1), 0, Math.PI*2);
+      ctx.fillStyle = p.color;
+      ctx.globalAlpha = p.alpha;
+      ctx.fill();
+      drawn++;
+    }
+    ctx.globalAlpha = 1;
+    document.getElementById('stat-ground').textContent = drawn;
+  }
+
+  return {
+    async start() {
+      if (active) return;
+      canvas = document.createElement('canvas');
+      canvas.style.cssText = 'position:fixed;inset:0;z-index:5;pointer-events:none;width:100%;height:100%';
+      document.body.appendChild(canvas);
+      ctx = canvas.getContext('2d');
+      // FIX: Account for devicePixelRatio
+      const resize = () => {
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = window.innerWidth * dpr;
+        canvas.height = window.innerHeight * dpr;
+      };
+      resize(); window.addEventListener('resize', resize);
+      Intel.log('Fetching OSM road network (Austin TX)...');
+      try {
+        segments = await fetchOsm();
+        Intel.log(`OSM: ${segments.length} road segments loaded`);
+      } catch(e) {
+        Intel.alert(`OSM failed: ${e.message} — using demo grid`);
+        segments = buildDemoGrid();
+      }
+      spawnParticles(); active=true; loop();
+    },
+    stop() {
+      active=false;
+      if (rafId) cancelAnimationFrame(rafId);
+      if (canvas) canvas.remove();
+      canvas=null; ctx=null; particles=[];
+      document.getElementById('stat-ground').textContent='0';
+      Intel.log('Road particles OFF');
+    },
+  };
+})();
+
+// ════════════════════════════════════════════════════════════
+// SHADERS — WebGL2 post-process (NVG / FLIR / RADAR)
+// ════════════════════════════════════════════════════════════
+const Shaders = (() => {
+  let gl=null, program=null, canvas=null, tex=null, rafId=null, mode='normal';
+  let lastFrameTime = 0;
+  let shaderTime = 0;
+
+  const VERT=`#version 300 es
+in vec2 a_pos; out vec2 v_uv;
+void main(){v_uv=a_pos*.5+.5;gl_Position=vec4(a_pos,0.,1.);}`;
+
+  const FRAGS = {
+    nvg:`#version 300 es
+precision mediump float;
+uniform sampler2D u_tex;uniform float u_time;
+in vec2 v_uv;out vec4 o;
+float rnd(vec2 c){return fract(sin(dot(c,vec2(12.9898,78.233)))*43758.5453);}
+void main(){
+  vec2 uv=v_uv,d=uv-.5;float r2=dot(d,d);
+  uv+=d*r2*.15;
+  if(uv.x<0.||uv.x>1.||uv.y<0.||uv.y>1.){o=vec4(0.,0.,0.,1.);return;}
+  vec4 c=texture(u_tex,uv);
+  float l=dot(c.rgb,vec3(.299,.587,.114));
+  l=pow(l,.6)*1.4;
+  float sc=.85+.15*sin(uv.y*600.);
+  float ns=rnd(uv+u_time*.01)*.06;
+  float vg=smoothstep(0.5,0.0,r2);
+  float f=clamp((l+ns)*sc*vg,0.,1.);
+  o=vec4(f*.05,f*1.,f*.3,.92);
+}`,
+    flir:`#version 300 es
+precision mediump float;
+uniform sampler2D u_tex;uniform float u_time;
+in vec2 v_uv;out vec4 o;
+vec3 pal(float t){
+  t=clamp(t,0.,1.);vec3 c;
+  if(t<.2)      c=mix(vec3(0.),vec3(.3,0.,.5),t/.2);
+  else if(t<.4) c=mix(vec3(.3,0.,.5),vec3(.8,0.,0.),(t-.2)/.2);
+  else if(t<.6) c=mix(vec3(.8,0.,0.),vec3(1.,.5,0.),(t-.4)/.2);
+  else if(t<.8) c=mix(vec3(1.,.5,0.),vec3(1.,1.,0.),(t-.6)/.2);
+  else          c=mix(vec3(1.,1.,0.),vec3(1.,1.,1.),(t-.8)/.2);
+  return c;
+}
+void main(){
+  vec4 c=texture(u_tex,v_uv);
+  float l=dot(c.rgb,vec3(.299,.587,.114));
+  float h=pow(1.-l,1.5);
+  h+=(fract(sin(dot(v_uv,vec2(127.1,311.7))+u_time*.5)*43758.5)-.5)*.03;
+  float sc=.92+.08*sin(v_uv.y*500.);
+  o=vec4(pal(clamp(h,0.,1.))*sc,.9);
+}`,
+    radar:`#version 300 es
+precision mediump float;
+uniform sampler2D u_tex;uniform float u_time;
+in vec2 v_uv;out vec4 o;
+#define PI 3.14159265
+void main(){
+  vec2 d=v_uv-.5;float r=length(d),a=atan(d.y,d.x);
+  vec4 c=texture(u_tex,v_uv);
+  float l=dot(c.rgb,vec3(.299,.587,.114));
+  float sw=mod(u_time*.8,PI*2.);
+  float ad=mod(sw-a+PI*2.,PI*2.);
+  float trail=exp(-ad*1.2)*.6;
+  float rings=.08*(1.-smoothstep(0.,.01,abs(r-.25)))
+             +.08*(1.-smoothstep(0.,.01,abs(r-.40)))
+             +.08*(1.-smoothstep(0.,.01,abs(r-.48)));
+  float beam=exp(-ad*8.)*.5*smoothstep(.5,0.,r);
+  float f=l*.3+trail*.4+rings+beam;
+  o=vec4(f*.1,f*1.,f*.35,.88);
+}`,
+  };
+
+  function compile(type, src) {
+    const s=gl.createShader(type);
+    gl.shaderSource(s,src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s,gl.COMPILE_STATUS)) {
+      Intel.alert(`Shader compile error: ${gl.getShaderInfoLog(s)}`);
+    }
+    return s;
+  }
+
+  function build(fragSrc) {
+    if (program) gl.deleteProgram(program);
+    program = gl.createProgram();
+    gl.attachShader(program, compile(gl.VERTEX_SHADER, VERT));
+    gl.attachShader(program, compile(gl.FRAGMENT_SHADER, fragSrc));
+    gl.linkProgram(program);
+    const buf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,1,-1,-1,1,1,1]), gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(program,'a_pos');
+    gl.enableVertexAttribArray(loc);
+    gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  }
+
+  function startRender() {
+    const src = document.querySelector('#cesiumContainer canvas');
+    if (!src||!gl||!program) return;
+    if (tex) gl.deleteTexture(tex);
+    tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D,tex);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    lastFrameTime = performance.now();
+    shaderTime = 0;
+    function frame(now){
+      if (mode==='normal') return;
+      rafId=requestAnimationFrame(frame);
+      // FIX: Use real delta time instead of hardcoded 0.016
+      const dt = (now - lastFrameTime) / 1000;
+      lastFrameTime = now;
+      shaderTime += dt;
+      gl.useProgram(program);
+      gl.bindTexture(gl.TEXTURE_2D,tex);
+      try { gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,src); }
+      catch(e){ return; }
+      gl.uniform1i(gl.getUniformLocation(program,'u_tex'),0);
+      gl.uniform1f(gl.getUniformLocation(program,'u_time'),shaderTime);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
+      gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+    }
+    rafId=requestAnimationFrame(frame);
+  }
+
+  return {
+    init() {
+      canvas = document.getElementById('shader-overlay');
+      const resize=()=>{
+        canvas.width=window.innerWidth;
+        canvas.height=window.innerHeight;
+        if(gl) gl.viewport(0,0,canvas.width,canvas.height);
+      };
+      resize(); window.addEventListener('resize',resize);
+      gl = canvas.getContext('webgl2',{premultipliedAlpha:false});
+      if (!gl) { Intel.alert('WebGL2 not available — shader modes disabled'); return; }
+      // Handle context loss
+      canvas.addEventListener('webglcontextlost', e => {
+        e.preventDefault();
+        Intel.alert('WebGL context lost — shader modes paused');
+        if (rafId) cancelAnimationFrame(rafId);
+      });
+      canvas.addEventListener('webglcontextrestored', () => {
+        Intel.init('WebGL context restored');
+        if (mode !== 'normal') { build(FRAGS[mode]); startRender(); }
+      });
+    },
+    setMode(m) {
+      mode=m;
+      if (rafId) cancelAnimationFrame(rafId); rafId=null;
+      if (m==='normal') { canvas.classList.remove('active'); canvas.style.opacity='0'; return; }
+      canvas.classList.add('active'); canvas.style.opacity='1';
+      if (!FRAGS[m]||!gl) return;
+      build(FRAGS[m]); startRender();
+    },
+  };
+})();
+
+// ════════════════════════════════════════════════════════════
+// MAIN
+// ════════════════════════════════════════════════════════════
+function setStatus(msg) {
+  document.getElementById('status-msg').textContent = msg;
+}
+
+function startClock() {
+  setInterval(()=>{
+    const n  = SimTime.now();
+    const hh = String(n.getUTCHours()).padStart(2,'0');
+    const mm = String(n.getUTCMinutes()).padStart(2,'0');
+    const ss = String(n.getUTCSeconds()).padStart(2,'0');
+    document.getElementById('utc-time').textContent = `UTC ${hh}:${mm}:${ss}`;
+    document.getElementById('local-date').textContent =
+      n.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
+  }, 200);
+}
+
+function startFPS() {
+  let last=performance.now(), frames=0;
+  (function tick(){
+    frames++;
+    const now=performance.now();
+    if (now-last>=1000){
+      document.getElementById('fps-counter').textContent=`FPS: ${frames}`;
+      frames=0; last=now;
+    }
+    requestAnimationFrame(tick);
+  })();
+}
+
+function wireToggles() {
+  const on=(id,fn)=>document.getElementById(id).addEventListener('change',e=>fn(e.target.checked));
+
+  on('toggle-atmosphere', v=>setAtmosphere(v));
+  on('toggle-3dtiles', v=>{
+    if (google3dTileset) { google3dTileset.show = v; }
+    else if (v && Config.hasGoogle()) { loadGoogle3DTiles(); }
+    else if (v) { Intel.alert('Add Google Maps key in config first'); document.getElementById('toggle-3dtiles').checked=false; }
+  });
+  on('toggle-flights', v=>{
+    if (v) Flights.start(false);
+    else Flights.stop();
+    // Uncheck ADS-B when enabling OpenSky and vice versa
+    if (v) document.getElementById('toggle-adsb').checked = false;
+  });
+  on('toggle-adsb', v=>{
+    if (v && !Config.hasAdsb()) {
+      Intel.alert('No ADS-B key configured');
+      document.getElementById('toggle-adsb').checked=false;
+      return;
+    }
+    if (v) { Flights.start(true); document.getElementById('toggle-flights').checked = false; }
+    else Flights.stop();
+  });
+  on('toggle-gps', v=>{
+    if (v) Satellites.load('gps');
+    else Satellites.stop();
+  });
+  on('toggle-leo', v=>{
+    if (v) Satellites.load('leo');
+    else Satellites.stop();
+  });
+  on('toggle-orbits', v=>Satellites.toggleOrbits(v));
+  on('toggle-roads', v=>{ if(v) Roads.start(); else Roads.stop(); });
+}
+
+function wireModeButtons() {
+  document.querySelectorAll('.mode-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      document.querySelectorAll('.mode-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      Shaders.setMode(btn.dataset.mode);
+      Intel.log(`View mode: ${btn.dataset.mode.toUpperCase()}`);
+      setStatus(`VIEW MODE: ${btn.dataset.mode.toUpperCase()}`);
+    });
+  });
+}
+
+// FIX: Time controls actually affect satellite propagation via SimTime
+function wireTimeControls() {
+  document.getElementById('btn-realtime').addEventListener('click',()=>{
+    SimTime.reset();
+    document.querySelectorAll('.time-btn').forEach(b=>b.classList.remove('active'));
+    document.getElementById('btn-realtime').classList.add('active');
+    Intel.log('Time: LIVE');
+  });
+  document.getElementById('btn-faster').addEventListener('click',()=>{
+    const r = Math.min(SimTime.getRate()*10, 10000);
+    SimTime.setRate(r);
+    document.getElementById('btn-realtime').classList.remove('active');
+    Intel.log(`Time: ${r}x`);
+  });
+  document.getElementById('btn-slower').addEventListener('click',()=>{
+    const r = Math.max(SimTime.getRate()/10, 0.1);
+    SimTime.setRate(r);
+    Intel.log(`Time: ${r}x`);
+  });
+}
+
+function wireConfigModal() {
+  function show() {
+    document.getElementById('config-modal').classList.remove('hidden');
+    document.getElementById('key-google').value       = Config.googleMapsKey;
+    document.getElementById('key-adsb').value         = Config.adsbKey;
+    document.getElementById('key-opensky-user').value = Config.openskyUser;
+    document.getElementById('key-opensky-pass').value = Config.openskyPass;
+  }
+  function hide() { document.getElementById('config-modal').classList.add('hidden'); }
+
+  document.getElementById('btn-config').addEventListener('click', show);
+  document.getElementById('btn-save-keys').addEventListener('click',()=>{
+    Config.save({
+      google:      document.getElementById('key-google').value.trim(),
+      adsb:        document.getElementById('key-adsb').value.trim(),
+      openskyUser: document.getElementById('key-opensky-user').value.trim(),
+      openskyPass: document.getElementById('key-opensky-pass').value.trim(),
+    });
+    hide();
+    Intel.init('Keys saved. Reloading...');
+    setTimeout(()=> location.reload(), 500);
+  });
+  document.getElementById('btn-demo-mode').addEventListener('click',()=>{ hide(); bootDemo(); });
+
+  if (!Config.hasAny()) show();
+  else { document.getElementById('config-modal').classList.add('hidden'); }
+}
+
+async function boot() {
+  setStatus('INITIALIZING GLOBE...');
+  await initGlobe();
+  Shaders.init();
+  Intel.init('PALANTIR VIBECODE online');
+  Intel.init('Scroll to zoom in/out | Drag to rotate | Right-drag to tilt');
+  if (Config.hasGoogle()) {
+    Intel.init('Zoom into any city to see photorealistic 3D buildings');
+  }
+  setStatus(Config.hasGoogle()
+    ? '3D TILES ACTIVE — zoom into a city for photorealistic view'
+    : 'CESIUM TERRAIN ACTIVE — add Google Maps key for 3D tiles');
+}
+
+async function bootDemo() {
+  setStatus('DEMO MODE — no API keys required');
+  await initGlobe();
+  Shaders.init();
+  Intel.init('DEMO MODE — live data disabled, demo satellites loaded');
+  Intel.init('Try NVG / FLIR / RADAR view modes');
+  Intel.init('Scroll to zoom | Drag to rotate | Right-drag to tilt');
+  Satellites.loadDemo();
+  document.getElementById('toggle-gps').checked = true;
+  setStatus('DEMO MODE — 10 satellites | all view modes available');
+}
+
+window.addEventListener('load', ()=>{
+  startClock();
+  startFPS();
+  wireToggles();
+  wireModeButtons();
+  wireTimeControls();
+  wireConfigModal();
+  if (Config.hasAny()) boot();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PALANTIR VIBECODE // GLOBAL SURVEILLANCE SYSTEM</title>
+
+  <!-- CesiumJS -->
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet" />
+
+  <!-- satellite.js for TLE propagation -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/satellite.js/4.1.4/satellite.min.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- SCANLINE OVERLAY -->
+  <div id="scanlines"></div>
+
+  <!-- VIGNETTE -->
+  <div id="vignette"></div>
+
+  <!-- CESIUM GLOBE -->
+  <div id="cesiumContainer"></div>
+
+  <!-- HUD TOP BAR -->
+  <div id="hud-top">
+    <div id="hud-title">
+      <span class="blink">▮</span>
+      PALANTIR VIBECODE // GLOBAL INTELLIGENCE SYSTEM
+      <span class="blink">▮</span>
+    </div>
+    <div id="hud-clock">
+      <span id="utc-time">UTC --:--:--</span>
+      <span id="local-date"></span>
+    </div>
+    <div id="hud-coords">
+      <span id="coord-lat">LAT --°</span>
+      <span id="coord-lon">LON --°</span>
+      <span id="coord-alt">ALT --km</span>
+    </div>
+  </div>
+
+  <!-- LEFT PANEL: LAYER CONTROLS -->
+  <div id="panel-left">
+    <div class="panel-header">LAYER CONTROL</div>
+
+    <div class="layer-group">
+      <div class="layer-label">TERRAIN</div>
+      <label class="toggle-row">
+        <span>3D Photorealistic Tiles</span>
+        <input type="checkbox" id="toggle-3dtiles" checked />
+        <span class="toggle-slider"></span>
+      </label>
+      <label class="toggle-row">
+        <span>Atmosphere</span>
+        <input type="checkbox" id="toggle-atmosphere" checked />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="layer-group">
+      <div class="layer-label">TRACK: AIR</div>
+      <label class="toggle-row">
+        <span>Commercial Flights</span>
+        <input type="checkbox" id="toggle-flights" />
+        <span class="toggle-slider"></span>
+      </label>
+      <label class="toggle-row">
+        <span>ADS-B Unfiltered</span>
+        <input type="checkbox" id="toggle-adsb" />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="layer-group">
+      <div class="layer-label">TRACK: ORBITAL</div>
+      <label class="toggle-row">
+        <span>GPS Constellation</span>
+        <input type="checkbox" id="toggle-gps" />
+        <span class="toggle-slider"></span>
+      </label>
+      <label class="toggle-row">
+        <span>LEO Satellites</span>
+        <input type="checkbox" id="toggle-leo" />
+        <span class="toggle-slider"></span>
+      </label>
+      <label class="toggle-row">
+        <span>Orbital Paths</span>
+        <input type="checkbox" id="toggle-orbits" />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="layer-group">
+      <div class="layer-label">TRACK: GROUND</div>
+      <label class="toggle-row">
+        <span>Road Particles</span>
+        <input type="checkbox" id="toggle-roads" />
+        <span class="toggle-slider"></span>
+      </label>
+      <label class="toggle-row">
+        <span>CCTV Cams (Austin)</span>
+        <input type="checkbox" id="toggle-cctv" />
+        <span class="toggle-slider"></span>
+      </label>
+    </div>
+
+    <div class="layer-group">
+      <div class="layer-label">VIEW MODE</div>
+      <div class="mode-buttons">
+        <button class="mode-btn active" data-mode="normal">NORMAL</button>
+        <button class="mode-btn" data-mode="nvg">NVG</button>
+        <button class="mode-btn" data-mode="flir">FLIR</button>
+        <button class="mode-btn" data-mode="radar">RADAR</button>
+      </div>
+    </div>
+
+    <div class="layer-group">
+      <div class="layer-label">TIME CONTROL</div>
+      <div class="time-controls">
+        <button class="time-btn" id="btn-realtime">LIVE</button>
+        <button class="time-btn" id="btn-faster">▶▶</button>
+        <button class="time-btn" id="btn-slower">◀◀</button>
+      </div>
+      <div id="time-rate-display">Rate: 1x</div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL: INTEL FEED -->
+  <div id="panel-right">
+    <div class="panel-header">INTEL FEED</div>
+    <div id="intel-feed">
+      <div class="intel-entry init">SYSTEM INITIALIZING...</div>
+    </div>
+
+    <!-- SELECTED OBJECT INFO -->
+    <div id="object-detail" class="hidden">
+      <div class="panel-header">OBJECT DETAIL</div>
+      <div id="object-info"></div>
+    </div>
+
+    <!-- STATS -->
+    <div id="stats-panel">
+      <div class="stat-row"><span class="stat-label">AIRCRAFT</span><span id="stat-flights">0</span></div>
+      <div class="stat-row"><span class="stat-label">SATELLITES</span><span id="stat-sats">0</span></div>
+      <div class="stat-row"><span class="stat-label">GROUND OBJ</span><span id="stat-ground">0</span></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM BAR -->
+  <div id="hud-bottom">
+    <span id="status-msg">AWAITING INITIALIZATION — SET API KEYS IN config.js</span>
+    <span id="fps-counter">FPS: --</span>
+  </div>
+
+  <!-- SHADER OVERLAY CANVAS (NVG/FLIR/RADAR) -->
+  <canvas id="shader-overlay"></canvas>
+
+  <!-- CONFIG MODAL -->
+  <div id="config-modal" class="modal">
+    <div class="modal-box">
+      <div class="modal-title">// API CONFIGURATION //</div>
+      <p class="modal-desc">Enter your API keys to unlock live data feeds. All keys stored locally only.</p>
+      <div class="api-field">
+        <label>Google Maps API Key (3D Tiles)</label>
+        <input type="password" id="key-google" placeholder="AIza..." autocomplete="off" />
+      </div>
+      <div class="api-field">
+        <label>Cesium Ion Token (optional)</label>
+        <input type="password" id="key-cesium" placeholder="eyJ..." autocomplete="off" />
+      </div>
+      <div class="api-field">
+        <label>ADS-B Exchange RapidAPI Key</label>
+        <input type="password" id="key-adsb" placeholder="RapidAPI key..." autocomplete="off" />
+      </div>
+      <div class="api-field">
+        <label>OpenSky Username (optional)</label>
+        <input type="text" id="key-opensky-user" placeholder="username" autocomplete="off" />
+      </div>
+      <div class="api-field">
+        <label>OpenSky Password (optional)</label>
+        <input type="password" id="key-opensky-pass" placeholder="password" autocomplete="off" />
+      </div>
+      <div class="modal-buttons">
+        <button id="btn-save-keys">SAVE &amp; INITIALIZE</button>
+        <button id="btn-demo-mode">DEMO MODE (No Keys)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main app modules -->
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
